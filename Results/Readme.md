@@ -21,5 +21,5 @@ Each one of the six tables contains 39 thousand columns, one for each gene used 
 
 ## SNP annotation
 
-The SNP annotation files are created using [SnpEff](http://pcingola.github.io/SnpEff/). They contain the results for the [Single Nucleotide Polymorphisms](https://github.com/TheRocinante-lab/PabloAtienza/blob/main/Results/Snp_summary.html) and for the [Indels](https://github.com/TheRocinante-lab/PabloAtienza/blob/main/Results/Indel_summary.html)
+The SNP annotation files are created using [SnpEff](http://pcingola.github.io/SnpEff/). They contain the results for the [Single Nucleotide Polymorphisms](http://htmlpreview.github.io/?https://github.com/TheRocinante-lab/PabloAtienza/blob/main/Results/Snp_summary.html) and for the [Indels](http://htmlpreview.github.io/?https://github.com/TheRocinante-lab/PabloAtienza/blob/main/Results/Indel_summary.html)
 
