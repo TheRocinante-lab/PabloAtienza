@@ -1,0 +1,444 @@
+---
+title: "Genes CNV analysis"
+author: "Pablo Atienza"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd('C:/Users/pablo/OneDrive - Universidad Politécnica de Madrid/Documentos/Biotecnología/4º España/Segundo cuatri/TFG/CNVs')
+library("dplyr")
+library("ggpubr")
+library('readr')
+library('ggplot2')
+library('stringr')
+library('patchwork')
+library('wesanderson')
+name <- "Final_table_noMap.txt" # Input has to be a table with as many columns as genes, and as many rows and individuals. Deletions are represented by -1, duplications by 1 and no CNV by 0.
+df <- as.data.frame(read_tsv(name,col_names=TRUE))
+```
+
+This document uses `r toString(name)` as input data.
+
+Extraction of the information rows from the table, to accelerate further analysis:
+```{r}
+alo <- df[11:13,df[11,]!=0]
+```
+
+# Extraction of the CNVs grouped by individuals that show them, per population.
+
+In this step, the number of CNVs shared by each number of individuals is obtained
+```{r}
+Total <- as.data.frame(table(unlist(alo[1,]))) #Numbers in both populations
+High <- as.data.frame(table(unlist(alo[2,]))) #Numbers only in HL
+Low <- as.data.frame(table(unlist(alo[3,]))) #Number only in LL
+Total; High; Low
+```
+
+
+
+## Graphics
+
+Definition of the functions to prepare the datasets for their visual representations.
+```{r} 
+prep_total <- function(x){
+  n <- nrow(x) ; m <- ncol(x)
+  df <- data.frame(Individuals=as.integer(x[,'Individuals']),
+    Genes=x[,'Genes'],
+    Fr=x[,'Fr'])
+  s<- max(df[v,'Fr'])
+  df_n[v,'Fr_gr'] <- round((df_n[v,'Fr']/s),2)
+  return(df_n)
+}
+
+Fabs <- function(orig){
+  orig <- orig[orig[,1]!=0,]
+  c <- ncol(orig) ; r <- nrow(orig)
+  if (max(orig[,1] == 10)){
+    for (i in 1:r){
+      orig[i,c+1] <- round(sum(orig[i:r,2]),0)
+      orig[i,c+2] <- round((orig[i,c+1]/orig[1,c+1]),2)
+    }
+    colnames(orig) <- c('Individuals','Genes','Fabs','Fr')
+  }else {
+    s <- r/2
+    for (i in 1:s){
+      orig[i,c+1] <- round(sum(orig[i:s,2]),0)
+      orig[i,c+2] <- round((orig[i,c+1]/orig[1,c+1]),2)
+      orig[i+s,c+1] <- round(sum(orig[(i+s):r,2]),0)
+      orig[i+s,c+2] <- round((orig[i+s,c+1]/orig[1+s,c+1]),2)
+    }
+    orig[1:s,c+3] <- 'HL'
+    orig[(s+1):r,c+3] <- 'LL'
+    colnames(orig) <- c('Individuals','Genes','Fabs','Fr','Population')
+  }
+  return(orig)
+}
+```
+
+### CNVs per individual
+
+Calculation of the number of CNVs for each individual
+````{r}
+for (i in 1:10){
+  print(rownames(df[i,]))
+  print(sum(abs(df[i,])))
+}
+````
+#### Total CNVs in the 10 individuals
+
+ **First table**: Number of CNVs in both population
+```{r}
+Total_abs <- Fabs(Total)
+Total_abs
+Top <- max(Total_abs$Genes)
+
+b <- ggplot(data=Total_abs,aes(x=Individuals)) +
+  
+  geom_bar( aes(y=Genes),stat='identity',fill='#f49425' ,color='#0e0904') +
+  geom_line( aes(y=Fr*Top,group=1),color='#803a38', size=1.2) + 
+  
+  scale_y_continuous(sec.axis = sec_axis(~./Top*100,name='Frecuency')) +
+  theme_bw() +
+  ggtitle("Number of CNVs among individuals")
+b
+```
+
+### Total CNVs in both populations
+```{r}
+Mix_abs <- Fabs(rbind(High,Low))
+Mix_abs
+```
+
+**Second table:** Number of CNVs shared by number of individual comparing both populations
+```{r}
+Total_Top <- max(Mix_abs$Genes)
+Total_plot <- ggplot(data=Mix_abs,aes(x=Individuals)) +
+  
+  geom_bar( aes(y=Genes,fill=Population),stat='identity',color='black',position=position_dodge(),alpha=.5) +
+  geom_line( aes(y=Fr*Total_Top,colour=Population,group=Population), size=1.2) + 
+  
+  coord_cartesian(ylim=c(0,Total_Top)) + 
+  scale_y_continuous(sec.axis = sec_axis(~./Total_Top*100,name='Frecuency')) +
+  scale_fill_manual(labels = c("Highlands", "Lowlands"),values=c('#b27c00','#4e7717')) +
+  scale_color_manual(labels = c("Highlands", "Lowlands"),values=c('#b27c00','#4e7717')) +
+  theme_bw() + 
+  labs(x="Number of infividuals") +
+  ggtitle("Total CNVs")
+Total_plot
+```
+
+## Extraction of Duplications and deletions per population
+
+In this part of the document, the names of duplicated and deleted genes per individual, separated in populations, is going to be extracted from the main data frame. For each gene (columns), the number of inidividuals that have called it as duplication or deletion will be indicated by rows.
+
+### Highland population
+
+Extraction of the names of duplicated and deleted genes in the HL population
+
+```{r}
+HL_names <- colnames(df[12,df[12,]!=0]) #Only look in genes that have a CNV
+HL_CNV <- data.frame(matrix(ncol=length(HL_names),nrow=2))
+colnames(HL_CNV) <-HL_names
+rownames(HL_CNV) <- c('Duplications','Deletions')
+for (i in HL_names){
+  Dup <- Del <- 0
+  for (j in 1:5){
+    if (df[j,i] == 1){
+      Dup <- Dup + 1
+    }
+    else if (df[j,i]== -1){
+      Del <- Del + 1
+    }
+  }
+  HL_CNV[1,i] <- Dup
+  HL_CNV[2,i] <- Del
+}
+```
+
+The table below indicates the genes that are called as duplication for some individuals but also as deletion for others
+
+```{r}
+HL_CNV[,HL_CNV[1,]!=0 & HL_CNV[2,]!=0]
+```
+Number of duplications and deletions per number of individuals that called them.
+
+```{r}
+HL_dup_num <- table(unlist(HL_CNV[1,]))
+HL_del_num <- table(unlist(HL_CNV[2,]))
+
+HL_dup_num ; HL_del_num
+```
+
+### Deletions
+
+Extraction of the names of duplicated and deleted genes in the LL population
+
+```{r}
+LL_names <- colnames(df[13,df[13,]!=0])
+LL_CNV <- data.frame(matrix(ncol=length(LL_names),nrow=2))
+colnames(LL_CNV) <- LL_names 
+rownames(LL_CNV) <- c('Duplications','Deletions')
+for (i in LL_names){
+  Dup <- Del <- 0
+  for (j in 6:10){
+    if (df[j,i] == 1){
+      Dup <- Dup + 1
+    }
+    else if (df[j,i]== -1){
+      Del <- Del + 1
+    }
+  }
+  LL_CNV[1,i] <- Dup
+  LL_CNV[2,i] <- Del
+}
+```
+
+
+The table below indicates the genes that are called as deletion for some individuals but also as deletion for others
+
+```{r}
+LL_CNV[,LL_CNV[1,]!=0 & LL_CNV[2,]!=0]
+```
+
+Number of duplications and deletions per number of individuals that called them.
+
+```{r}
+LL_dup_num <- table(unlist(LL_CNV[1,]))
+LL_del_num <- table(unlist(LL_CNV[2,]))
+
+LL_dup_num ; LL_del_num
+```
+
+### Creation of table of absolute and relative accumulated frequencies of both populations
+
+Definition of function for the creation of tables and the initial data tables.
+
+```{r}
+Fabs <- function(orig,m){
+  c <- ncol(orig) ; r <- nrow(orig)
+  m <- matrix(0,nrow=2*r,ncol=(c))
+  for (i in 1:r){
+    for (j in 1:c){
+      m[i,j]<-round(sum(orig[i,j:c]),0)
+      m[i+r,j] <- round((m[i,j]/m[i,1])*100,2)
+    }
+  }
+  row.names(m) <- c('HL_dup_abs','LL_dup_abs','HL_del_abs','LL_del_abs','HL_dup_rel','LL_dup_rel','HL_del_rel','LL_del_rel')
+  colnames(m) <- c('All CNVs','1','2','3','4','5')
+  return(m)
+}
+
+Pop <- rbind(HL_dup_num,LL_dup_num,HL_del_num,LL_del_num)
+Pop
+Pop_abs <- Fabs(Pop,Pop_abs) ; P <- Pop_abs
+P[] <- as.character(P)
+print(P,quote = FALSE)
+```
+
+Chi-square test between populations for number of genes at least in x individuals
+```{r}
+
+for (i in seq(1,nrow(Pop_abs)/2,2)){
+    R <- chisq.test(Pop_abs[i,2:6],Pop_abs[i+1,2:6],correct=FALSE)
+    R$data.name <- c(row.names(Pop_abs)[i],paste('\t',row.names(Pop_abs)[i+1]))
+    print(R)
+}
+```
+### Plotting of the results
+
+```{r}
+prep <- function(i,x=Pop,y=Pop_abs){
+  n <- nrow(x) ; m <- ncol(x)
+  df <- data.frame(Individuals=c(colnames(x),colnames(x)),
+    Genes=c(x[i,],x[i+1,]),
+    Fr=c(t(y[i+n,]),t(y[i+n+1,])),
+    Population = c(rep('HL',m),rep('LL',m)))
+  df_n <- df[df[,1]!=0,]
+  for (p in c('HL','LL')){
+      v <- df_n$Population == p
+      s<- max(df_n[v,'Fr'])
+      df_n[v,'Fr'] <- round((df_n[v,'Fr']/s),2)
+  }
+  return(df_n)
+}
+```
+
+```{r}
+Dup_n <- prep(1)
+Dup_n
+```
+
+Plot of duplications
+```{r}
+Dup_Top <- max(Dup_n$Genes)
+
+Dup_plot <- ggplot(data=Dup_n,aes(x=Individuals)) +
+  
+  geom_bar( aes(y=Genes,fill=Population),stat='identity',color='black',position=position_dodge(),alpha=.5) +
+  geom_line( aes(y=Fr*Dup_Top,colour=Population,group=Population), size=1.2) + 
+  
+  scale_y_continuous(sec.axis = sec_axis(~./Dup_Top*100,name='Frecuency')) +
+  scale_fill_manual(labels = c("Highlands", "Lowlands"),values=c('#b27c00','#4e7717')) +
+  scale_color_manual(labels = c("Highlands", "Lowlands"),values=c('#b27c00','#4e7717')) +
+  theme_bw() + 
+  labs(x="Number of infividuals") +
+  ggtitle("Duplications")
+
+Dup_plot
+```
+Plot of deletions
+```{r}
+Del_n <- prep(3)
+```
+```{r}
+Del_Top <- max(Del_n$Genes)
+
+Del_plot <- ggplot(data=Del_n,aes(x=Individuals)) +
+  
+  geom_bar( aes(y=Genes,fill=Population),stat='identity',color='black',position=position_dodge(),alpha=.5) +
+  geom_line( aes(y=Fr*Del_Top,colour=Population,group=Population), size=1.2) + 
+  
+  scale_y_continuous(sec.axis = sec_axis(~./Del_Top*100,name='Frecuency')) +
+  scale_fill_manual(labels = c("Highlands", "Lowlands"),values=c('#b27c00','#4e7717')) +
+  scale_color_manual(labels = c("Highlands", "Lowlands"),values=c('#b27c00','#4e7717')) +
+  theme_bw() + 
+  labs(x="Number of infividuals") +
+  ggtitle("Deletions")
+
+Del_plot
+```
+
+### Merging of graphics
+
+````{r}
+Down <- ggarrange(Dup_plot,Del_plot,
+                  nrow = 1,ncol = 2,
+                  labels = c('B','C'),
+                  legend='none'
+                  )
+
+Whole <- ggarrange(Total_plot,Down,
+                   nrow = 2,ncol = 1,
+                   labels = c('A'),
+                   align = 'v',
+                   common.legend=TRUE,
+                   legend='bottom')
+Whole
+````
+
+## Population CNVs
+
+Definition of functions to compare the genes between populations
+```{r}
+Selection <- function(n,P){ # n allows to select the number of individuals that have to share a CNV to consider it a population CNV
+  R <- list(colnames(P['Duplications',P[1,]>=n]),colnames(P['Deletions',P[2,]>=n]))
+names(R) <- c('Duplications','Deletions')
+return (R)
+}
+
+lappend <- function (lst, ...){
+lst <- c(lst, list(...))
+  return(lst)
+}
+
+Comparison <- function(A,B){
+  C <- vector(mode='list')
+  for (i in c(1,2)){
+    Common <- intersect(A[[i]],B[[i]])
+    A_only <- setdiff(A[[i]],Common)
+    B_only <- setdiff(B[[i]],Common)
+    C <- lappend(C,Common,A_only,B_only)
+  
+  }
+  groups <- c('Common_Dup','HL_Dup_only','LL_Dup_only','Common_Del','HL_Del_only','LL_Del_only')
+  names(C) <- groups
+  return(C)
+}
+
+Process <- function(n,P1=HL_CNV,P2=LL_CNV){
+  Dir <- paste(n,'_indv')
+  dir.create(Dir,showWarnings = FALSE)
+  A <- Selection(n,P1)
+  B <- Selection(n,P2)
+  C <- Comparison(A,B)
+  groups <- names(C)
+  for (i in groups){
+    assign(i,as.data.frame(C[[i]]))
+    File <- paste(Dir,'/',i,"_",n,".txt",sep='')
+    write_tsv(eval(parse(text=i)),File,col_names=FALSE)
+  }
+  for (i in names(A)){
+    for (j in c('HL','LL')){
+          if (j == 'HL'){
+            assign(i,as.data.frame(A[[i]]))
+          }else{
+            assign(i,as.data.frame(B[[i]]))
+          }
+          File <- paste(Dir,'/',j,"_",i,"_",n,".txt",sep='')
+          write_tsv(eval(parse(text=i)),File,col_names=FALSE)
+    }
+  }
+}
+```
+
+### Highlands
+
+Definition and extraction of population CNVs for HL. It can be done by modifying the input number of the function.
+
+```{r}
+HL_CNV_pop <- Selection(1,HL_CNV)
+length(HL_CNV_pop$Duplications)
+length(HL_CNV_pop$Deletions)
+
+```
+
+### Lowlands
+
+
+Definition and extraction of population CNVs for HL. It can be done by modifying the input number of the function.
+
+```{r}
+LL_CNV_pop <- Selection(1,LL_CNV)
+length(LL_CNV_pop$Duplications)
+length(LL_CNV_pop$Deletions)
+```
+
+### Comparison
+The main comparison is going to create 6 groups: 
+1. Duplicated genes in highlands and lowlands
+2. Duplicated genes in highlands but not in lowlands
+3. Duplicated genes in lowlands but not in highlands
+4. Deleted genes in highlands and lowlands
+5. Deleted genes in highlands but not in lowlands
+6. Deleted genes in lowlands but not in highlands
+
+Since we are looking for traits that are present on highland but not in lowlands (Trichomes and anthocianin expression on stem), we should only account for groups 2 and 6.
+```{r}
+Comp <- Comparison(HL_CNV_pop,LL_CNV_pop)
+for (i in Comp){
+  print(length(i))
+}
+
+```
+
+### Extraction of gene IDs 
+
+```{r,eval=FALSE}
+for (i in groups){
+  assign(i,as.data.frame(Comp[[i]]))
+  File <- paste(n,'/',i,".txt",sep='')
+  write_tsv(eval(parse(text=i)),File,col_names=FALSE)
+}
+
+```
+
+# Fast creation 
+
+By changing the n variable, the number of individuals that are required to have called a gene in order to consider it a population CNV gene. 12 files will be produced:
+
+```{r,eval=FALSE}
+Process(5)
+```
+
